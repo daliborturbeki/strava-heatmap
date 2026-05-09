@@ -75,6 +75,7 @@ sequenceDiagram
 src/
   app/
     page.tsx                    # Login page
+    dashboard/page.tsx          # Main heatmap view
     api/
       auth/
         login/route.ts          # Redirects to Strava OAuth
