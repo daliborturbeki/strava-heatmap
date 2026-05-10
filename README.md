@@ -1,14 +1,14 @@
 # Strava Heatmap
 
-A production-ready PWA that visualizes your Strava runs as interactive heatmaps — route overlap intensity, elevation gradient, and heart rate gradient.
+A production-ready PWA that visualizes your Strava runs as interactive heatmaps - route overlap intensity, elevation gradient, and heart rate gradient.
 
 ## Tech Stack
 
 - **Next.js 15** (App Router, TypeScript)
 - **Tailwind CSS**
-- **iron-session** — encrypted cookie-based sessions
-- **deck.gl** — GPU-accelerated heatmap rendering _(coming soon)_
-- **Vercel** — hosting
+- **iron-session** - encrypted cookie-based sessions
+- **deck.gl** - GPU-accelerated heatmap rendering _(coming soon)_
+- **Vercel** - hosting
 
 ## Getting Started
 
@@ -65,23 +65,56 @@ sequenceDiagram
 
 ### Token Lifecycle
 
-- Access tokens expire every **6 hours** — the app refreshes them automatically on API calls.
-- Tokens are stored in an **httpOnly, encrypted cookie** — never exposed to client-side JavaScript.
+- Access tokens expire every **6 hours** - the app refreshes them automatically on API calls.
+- Tokens are stored in an **httpOnly, encrypted cookie** - never exposed to client-side JavaScript.
 - Logout hits `/api/auth/logout` which destroys the session cookie.
+
+## Activity Sync Flow
+
+On first load the app fetches all your Strava activities and caches them locally in IndexedDB. Subsequent syncs only fetch activities newer than the last sync timestamp - keeping API usage well within Strava's rate limits (1000 req/day).
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser as Browser (SyncPanel)
+    participant Cache as IndexedDB Cache
+    participant Proxy as Next.js API Proxy
+    participant Strava as Strava API
+
+    User->>Browser: Click "Sync Activities"
+    Browser->>Cache: Read lastSyncedAt timestamp
+    loop For each page (200 activities/page)
+        Browser->>Proxy: GET /api/strava/activities?page=N
+        Proxy->>Strava: GET /athlete/activities (with Bearer token)
+        Strava->>Proxy: Activity list
+        Proxy->>Browser: Activity list
+        Browser->>Cache: saveActivities(batch)
+        Browser->>Browser: Update progress UI
+    end
+    Browser->>Cache: setLastSyncedAt(now)
+    Browser->>User: Show activity list
+```
+
+> The API proxy (`/api/strava/activities`) reads the access token from the session cookie server-side - the token is never exposed to the browser.
 
 ## Project Structure
 
 ```
 src/
   app/
-    page.tsx                    # Login page
-    dashboard/page.tsx          # Main heatmap view
+    page.tsx                        # Login page
+    dashboard/
+      page.tsx                      # Server component - reads session, renders layout
+      SyncPanel.tsx                 # Client component - sync logic + activity list
     api/
       auth/
-        login/route.ts          # Redirects to Strava OAuth
-        callback/route.ts       # Exchanges code for tokens, sets session
-        logout/route.ts         # Destroys session
+        login/route.ts              # Redirects to Strava OAuth
+        callback/route.ts           # Exchanges code for tokens, sets session
+        logout/route.ts             # Destroys session cookie
+      strava/
+        activities/route.ts         # Proxy: fetches activities with server-side token
   lib/
-    session.ts                  # iron-session config + SessionData type
+    session.ts                      # iron-session config + SessionData type
+    strava.ts                       # Typed Strava API client (fetchActivities, fetchActivityStream)
+    dt.ts                           # IndexedDB schema + helpers (activities, streams, meta)
 ```
-
